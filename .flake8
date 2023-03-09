@@ -1,0 +1,34 @@
+[flake8]
+show-source = True
+statistics = False
+doctests = True
+
+# Plugins:
+accept-encodings = utf-8
+max-complexity = 6
+max-line-length = 120
+use_class_attributes_order_strict_mode = True
+max_function_length = 50
+max-cognitive-complexity = 8
+max-annotations-complexity = 4
+
+# Excluding some directories:
+exclude =
+  .git
+  __pycache__
+  .venv
+  .eggs
+  *.egg
+  dist
+  __init__.py
+
+# Self settings:
+max-imports = 15
+
+ignore = C101, D100, D104, D401, E203, W503, W504, RST303, RST304, DAR103, DAR203, WPS202, WPS305, WPS306,
+ WPS122, WPS410,WPS412, WPS226, WPS217, I004, I001, WPS404, B008, D105, WPS115, WPS432, DAR102, DAR301
+
+extend-ignore =
+    # Google Python style is not RST until after processed by Napoleon
+    # See https://github.com/peterjc/flake8-rst-docstrings/issues/17
+    RST201,RST203,RST301

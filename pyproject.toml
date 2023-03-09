@@ -1,0 +1,21 @@
+[tool.poetry]
+name = "chat-client"
+version = "0.1.0"
+description = ""
+authors = ["savilard <vitaliyantonoff@gmail.com>"]
+license = "MIT"
+readme = "README.md"
+packages = [{include = "chat_client"}]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+
+
+[tool.poetry.group.dev.dependencies]
+wemake-python-styleguide = "^0.17.0"
+black = "^23.1.0"
+mypy = "^1.1.1"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

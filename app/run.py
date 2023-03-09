@@ -1,6 +1,7 @@
 import asyncio
-import time
+from contextlib import asynccontextmanager
 from functools import wraps
+from typing import NoReturn
 
 import anyio
 import typer
@@ -24,11 +25,21 @@ def run_async(func):
     return wrapper
 
 
-async def generate_msgs(queue: asyncio.Queue):
-    while True:
-        message = time.time()
-        queue.put_nowait(message)
-        await asyncio.sleep(1)
+@asynccontextmanager
+async def open_connection(host, port):
+    reader, writer = await asyncio.open_connection(host, port)
+    try:
+        yield reader, writer
+    finally:
+        writer.close()
+        await writer.wait_closed()
+
+
+async def read_msgs(host: str, port: int, queue: asyncio.Queue) -> NoReturn:
+    async with open_connection(host, port) as (reader, writer):
+        while True:
+            chat_message = await reader.readline()
+            queue.put_nowait(chat_message.decode())
 
 
 @run_async
@@ -73,7 +84,7 @@ async def main(
 
     await asyncio.gather(
         gui.draw(messages_queue, sending_queue, status_updates_queue),
-        generate_msgs(messages_queue),
+        read_msgs(host=host, port=listen_server_port, queue=messages_queue),
     )
 
 

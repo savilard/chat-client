@@ -43,7 +43,7 @@ async def open_connection(host, port):
         await writer.wait_closed()
 
 
-async def read_msgs(host: str, port: int, queue: asyncio.Queue) -> NoReturn:
+async def read_msgs(host: str, port: int, queue: asyncio.Queue[str]) -> NoReturn:
     """Reads messages from the server.
 
     Args:
@@ -94,9 +94,9 @@ async def main(
         token: token to access the server
         history_file_path: Path to file with history of minechat
     """
-    messages_queue = asyncio.Queue()
-    sending_queue = asyncio.Queue()
-    status_updates_queue = asyncio.Queue()
+    messages_queue: asyncio.Queue[str] = asyncio.Queue()
+    sending_queue: asyncio.Queue[str] = asyncio.Queue()
+    status_updates_queue: asyncio.Queue[str] = asyncio.Queue()
 
     await asyncio.gather(
         gui.draw(messages_queue, sending_queue, status_updates_queue),

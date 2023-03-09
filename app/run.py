@@ -3,7 +3,6 @@ from contextlib import asynccontextmanager
 from functools import wraps
 from typing import NoReturn
 
-import anyio
 import typer
 
 import gui
@@ -11,24 +10,31 @@ import gui
 
 def run_async(func):
     """Used for asynchronous run with click arguments.
+
     https://github.com/tiangolo/typer/issues/88#issuecomment-889486850
 
     Args:
         func: decoratable asynchronous function
+
+    Returns:
+        object: decorate asynchronous function
     """
 
     @wraps(func)
     def wrapper(*args, **kwargs):
-        async def coro_wrapper():
-            return await func(*args, **kwargs)
-
-        return anyio.run(coro_wrapper)
+        return asyncio.run(func(*args, **kwargs))
 
     return wrapper
 
 
 @asynccontextmanager
 async def open_connection(host, port):
+    """Open connection to server.
+
+    Args:
+        host: server host
+        port: server port
+    """
     reader, writer = await asyncio.open_connection(host, port)
     try:
         yield reader, writer
@@ -38,6 +44,13 @@ async def open_connection(host, port):
 
 
 async def read_msgs(host: str, port: int, queue: asyncio.Queue) -> NoReturn:
+    """Reads messages from the server.
+
+    Args:
+        host: server host
+        port: server listen port
+        queue: messages queue
+    """
     async with open_connection(host, port) as (reader, writer):
         while True:
             chat_message = await reader.readline()
@@ -73,6 +86,7 @@ async def main(
     ),
 ) -> None:
     """Entry point.
+
     Args:
         host: minechat server host
         listen_server_port: port to receive messages

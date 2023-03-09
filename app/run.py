@@ -21,7 +21,9 @@ def run_async(func):
     def wrapper(*args, **kwargs):
         async def coro_wrapper():
             return await func(*args, **kwargs)
+
         return anyio.run(coro_wrapper)
+
     return wrapper
 
 

@@ -55,7 +55,7 @@ async def open_connection(host, port):
         await writer.wait_closed()
 
 
-async def read_msgs(
+async def read_msgs_from_server(
     host: str,
     port: int,
     messages_queue: asyncio.Queue[str],
@@ -75,6 +75,18 @@ async def read_msgs(
             decoded_chat_message = chat_message.decode()
             messages_queue.put_nowait(decoded_chat_message)
             history_update_queue.put_nowait(decoded_chat_message)
+
+
+async def read_msgs_from_file(filepath: str, messages_queue: asyncio.Queue[str]) -> None:
+    """Read messages from file.
+
+    Args:
+        filepath: path to file with messages
+        messages_queue: messages queue
+    """
+    async with aiofiles.open(filepath, mode='r') as history_file:
+        history_file_content = await history_file.read()
+        messages_queue.put_nowait(history_file_content)
 
 
 async def save_msgs(
@@ -137,9 +149,11 @@ async def main(
     status_updates_queue: asyncio.Queue[str] = asyncio.Queue()
     history_updates_queue: asyncio.Queue[str] = asyncio.Queue()
 
+    await read_msgs_from_file(filepath=history_file_path, messages_queue=messages_queue)
+
     await asyncio.gather(
         gui.draw(messages_queue, sending_queue, status_updates_queue),
-        read_msgs(
+        read_msgs_from_server(
             host=host,
             port=listen_server_port,
             messages_queue=messages_queue,

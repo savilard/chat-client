@@ -5,7 +5,7 @@ import sys
 from contextlib import asynccontextmanager
 from functools import wraps
 from tkinter import messagebox
-from typing import AsyncGenerator, NoReturn
+from typing import AsyncGenerator
 
 import aiofiles
 import typer
@@ -81,6 +81,7 @@ async def read_msgs_from_server(
     port: int,
     messages_queue: asyncio.Queue[str],
     history_update_queue: asyncio.Queue[str],
+    status_updates_queue: asyncio.Queue[gui.ReadConnectionStateChanged],
 ) -> None:
     """Reads messages from the server.
 
@@ -89,9 +90,11 @@ async def read_msgs_from_server(
         port: server listen port
         messages_queue: messages queue
         history_update_queue: queue for saving message to file
+        status_updates_queue: queue for status updates
     """
     async with open_connection(host, port) as (reader, writer):
         while True:
+            status_updates_queue.put_nowait(gui.ReadConnectionStateChanged.ESTABLISHED)
             chat_message = await reader.readline()
             decoded_chat_message = chat_message.decode()
             messages_queue.put_nowait(decoded_chat_message)
@@ -154,11 +157,11 @@ async def submit_message(writer, message: str):
     await writer.drain()
 
 
-async def is_authorized(
+async def log_on_to_server(
     reader: asyncio.StreamReader,
     writer: asyncio.StreamWriter,
     token: str,
-) -> NoReturn:
+) -> dict[str, str]:
     """Log on to server.
 
     Args:
@@ -168,6 +171,9 @@ async def is_authorized(
 
     Returns:
         object: response from server
+
+    Raises:
+        InvalidTokenError: error when using an invalid token
     """
     await get_response_from_server(reader)
     await submit_message(writer, f'{token}\n')
@@ -175,9 +181,16 @@ async def is_authorized(
     account_info = json.loads(server_response)
     if account_info is None:
         raise InvalidTokenError
+    return account_info
 
 
-async def send_msgs(host: str, port: int, queue: asyncio.Queue[str], token: str):
+async def send_msgs(
+    host: str,
+    port: int,
+    queue: asyncio.Queue[str],
+    token: str,
+    status_updates_queue: asyncio.Queue[gui.SendingConnectionStateChanged],
+):
     """Send message to server.
 
     Args:
@@ -185,10 +198,12 @@ async def send_msgs(host: str, port: int, queue: asyncio.Queue[str], token: str)
         port: writing server port
         queue: queue
         token: user token for authorization on the server
+        status_updates_queue: queue for status updates
     """
     async with open_connection(host, port) as (reader, writer):
         await submit_message(writer, f'{token}\n')
         while True:
+            status_updates_queue.put_nowait(gui.SendingConnectionStateChanged.ESTABLISHED)
             user_msg = await queue.get()
             await submit_message(writer, message=f'{sanitize(user_msg)}\n\n')
 
@@ -232,12 +247,19 @@ async def main(
     """
     messages_queue: asyncio.Queue[str] = asyncio.Queue()
     sending_queue: asyncio.Queue[str] = asyncio.Queue()
-    status_updates_queue: asyncio.Queue[str] = asyncio.Queue()
+    status_updates_queue: asyncio.Queue[
+        gui.SendingConnectionStateChanged
+        | gui.ReadConnectionStateChanged
+        | gui.NicknameReceived
+    ] = asyncio.Queue()
     history_updates_queue: asyncio.Queue[str] = asyncio.Queue()
+
+    status_updates_queue.put_nowait(gui.ReadConnectionStateChanged.INITIATED)
+    status_updates_queue.put_nowait(gui.SendingConnectionStateChanged.INITIATED)
 
     try:
         async with open_connection(host, writing_server_port) as (reader, writer):
-            await is_authorized(reader, writer, token)
+            await log_on_to_server(reader, writer, token)
     except InvalidTokenError:
         messagebox.showinfo('Неверный токен', 'Проверьте токен, сервер не узнал его')
         sys.exit('Неверный токен')
@@ -254,6 +276,7 @@ async def main(
             port=listen_server_port,
             messages_queue=messages_queue,
             history_update_queue=history_updates_queue,
+            status_updates_queue=status_updates_queue,
         ),
         save_msgs(
             filepath=history_file_path,
@@ -265,6 +288,7 @@ async def main(
             port=writing_server_port,
             queue=sending_queue,
             token=token,
+            status_updates_queue=status_updates_queue,
         ),
     )
 

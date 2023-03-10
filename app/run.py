@@ -80,7 +80,10 @@ async def read_msgs_from_server(
             history_update_queue.put_nowait(decoded_chat_message)
 
 
-async def read_msgs_from_file(filepath: str, messages_queue: asyncio.Queue[str]) -> None:
+async def read_msgs_from_file(
+    filepath: str,
+    messages_queue: asyncio.Queue[str],
+) -> None:
     """Read messages from file.
 
     Args:
@@ -152,7 +155,10 @@ async def main(
     status_updates_queue: asyncio.Queue[str] = asyncio.Queue()
     history_updates_queue: asyncio.Queue[str] = asyncio.Queue()
 
-    await read_msgs_from_file(filepath=history_file_path, messages_queue=messages_queue)
+    await read_msgs_from_file(
+        filepath=history_file_path,
+        messages_queue=messages_queue,
+    )
 
     await asyncio.gather(
         gui.draw(messages_queue, sending_queue, status_updates_queue),

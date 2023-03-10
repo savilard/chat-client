@@ -2,7 +2,7 @@ import asyncio
 import datetime
 from contextlib import asynccontextmanager
 from functools import wraps
-from typing import NoReturn
+from typing import AsyncGenerator
 
 import aiofiles
 import typer
@@ -40,7 +40,10 @@ def run_async(func):
 
 
 @asynccontextmanager
-async def open_connection(host, port):
+async def open_connection(
+    host: str,
+    port: int,
+) -> AsyncGenerator[tuple[asyncio.StreamReader, asyncio.StreamWriter], None]:
     """Open connection to server.
 
     Args:
@@ -60,7 +63,7 @@ async def read_msgs_from_server(
     port: int,
     messages_queue: asyncio.Queue[str],
     history_update_queue: asyncio.Queue[str],
-) -> NoReturn:
+) -> None:
     """Reads messages from the server.
 
     Args:
@@ -93,7 +96,7 @@ async def save_msgs(
     filepath: str,
     current_time: str,
     queue: asyncio.Queue[str],
-) -> NoReturn:
+) -> None:
     """Save chat message to history file.
 
     Args:
@@ -107,7 +110,7 @@ async def save_msgs(
             await history_file.writelines(f'[{current_time}] {chat_message}')
 
 
-@run_async
+@run_async  # type: ignore
 async def main(
     host: str = typer.Option(
         default='minechat.dvmn.org',

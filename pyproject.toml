@@ -11,6 +11,7 @@ packages = [{include = "chat_client"}]
 python = "^3.11"
 typer = "^0.7.0"
 anyio = "^3.6.2"
+aiofiles = "^23.1.0"
 
 
 [tool.poetry.group.dev.dependencies]

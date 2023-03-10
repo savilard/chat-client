@@ -1,5 +1,6 @@
 import asyncio
 import datetime
+import json
 from contextlib import asynccontextmanager
 from functools import wraps
 from typing import AsyncGenerator
@@ -18,6 +19,20 @@ def get_current_time() -> str:
     """
     now_datetime = datetime.datetime.now()
     return now_datetime.strftime('%d.%m.%Y %H:%M:%S')  # noqa: WPS323
+
+
+def sanitize(text: str) -> str:
+    r"""Sanitize text.
+
+    '\\n' because click escapes command line arguments
+
+    Args:
+        text: text for processing
+
+    Returns:
+        object: reworked text
+    """
+    return text.replace('\\n', '')  # noqa: WPS342
 
 
 def run_async(func):
@@ -113,6 +128,66 @@ async def save_msgs(
             await history_file.writelines(f'[{current_time}] {chat_message}')
 
 
+async def get_response_from_server(reader: asyncio.StreamReader) -> bytes:
+    """Read message from server.
+
+    Args:
+        reader: asyncio.StreamReader
+
+    Returns:
+        object: response from server
+    """
+    return await reader.readline()
+
+
+async def submit_message(writer, message: str):
+    """Send message to chat.
+
+    Args:
+        writer: asyncio.StreamWriter
+        message: message to be sent to the server
+    """
+    writer.write(message.encode())
+    await writer.drain()
+
+
+async def log_on_to_server(
+    reader: asyncio.StreamReader,
+    writer: asyncio.StreamWriter,
+    token: str,
+) -> dict[str, str]:
+    """Log on to server.
+
+    Args:
+        reader: asyncio.StreamReader
+        writer: asyncio.StreamWriter
+        token: user token for authorization on the server
+
+    Returns:
+        object: response from server
+    """
+    await get_response_from_server(reader)
+    await submit_message(writer, f'{token}\n')
+    account_info = await get_response_from_server(reader)
+    return json.loads(account_info)
+
+
+async def send_msgs(host: str, port: int, queue: asyncio.Queue[str], token: str):
+    """Send message to server.
+
+    Args:
+        host: server host
+        port: writing server port
+        queue: queue
+        token: user token for authorization on the server
+    """
+    async with open_connection(host, port) as (reader, writer):
+        await log_on_to_server(reader, writer, token)
+        while True:
+            user_msg = await queue.get()
+            await submit_message(writer, message=f'{sanitize(user_msg)}\n\n')
+
+
 @run_async  # type: ignore
 async def main(
     host: str = typer.Option(
@@ -172,6 +247,12 @@ async def main(
             filepath=history_file_path,
             current_time=get_current_time(),
             queue=history_updates_queue,
+        ),
+        send_msgs(
+            host=host,
+            port=writing_server_port,
+            queue=sending_queue,
+            token=token,
         ),
     )
 

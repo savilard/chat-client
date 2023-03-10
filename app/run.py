@@ -1,14 +1,17 @@
 import asyncio
 import datetime
 import json
+import sys
 from contextlib import asynccontextmanager
 from functools import wraps
-from typing import AsyncGenerator
+from tkinter import messagebox
+from typing import AsyncGenerator, NoReturn
 
 import aiofiles
 import typer
 
 import gui
+from exceptions import InvalidTokenError
 
 
 def get_current_time() -> str:
@@ -151,11 +154,11 @@ async def submit_message(writer, message: str):
     await writer.drain()
 
 
-async def log_on_to_server(
+async def is_authorized(
     reader: asyncio.StreamReader,
     writer: asyncio.StreamWriter,
     token: str,
-) -> dict[str, str]:
+) -> NoReturn:
     """Log on to server.
 
     Args:
@@ -168,8 +171,10 @@ async def log_on_to_server(
     """
     await get_response_from_server(reader)
     await submit_message(writer, f'{token}\n')
-    account_info = await get_response_from_server(reader)
-    return json.loads(account_info)
+    server_response = await get_response_from_server(reader)
+    account_info = json.loads(server_response)
+    if account_info is None:
+        raise InvalidTokenError
 
 
 async def send_msgs(host: str, port: int, queue: asyncio.Queue[str], token: str):
@@ -182,7 +187,7 @@ async def send_msgs(host: str, port: int, queue: asyncio.Queue[str], token: str)
         token: user token for authorization on the server
     """
     async with open_connection(host, port) as (reader, writer):
-        await log_on_to_server(reader, writer, token)
+        await submit_message(writer, f'{token}\n')
         while True:
             user_msg = await queue.get()
             await submit_message(writer, message=f'{sanitize(user_msg)}\n\n')
@@ -229,6 +234,13 @@ async def main(
     sending_queue: asyncio.Queue[str] = asyncio.Queue()
     status_updates_queue: asyncio.Queue[str] = asyncio.Queue()
     history_updates_queue: asyncio.Queue[str] = asyncio.Queue()
+
+    try:
+        async with open_connection(host, writing_server_port) as (reader, writer):
+            await is_authorized(reader, writer, token)
+    except InvalidTokenError:
+        messagebox.showinfo('Неверный токен', 'Проверьте токен, сервер не узнал его')
+        sys.exit('Неверный токен')
 
     await read_msgs_from_file(
         filepath=history_file_path,

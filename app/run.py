@@ -1,11 +1,23 @@
 import asyncio
+import datetime
 from contextlib import asynccontextmanager
 from functools import wraps
 from typing import NoReturn
 
+import aiofiles
 import typer
 
 import gui
+
+
+def get_current_time() -> str:
+    """Get current time in str format.
+
+    Returns:
+        object: formatted current time
+    """
+    now_datetime = datetime.datetime.now()
+    return now_datetime.strftime('%d.%m.%Y %H:%M:%S')  # noqa: WPS323
 
 
 def run_async(func):
@@ -43,18 +55,44 @@ async def open_connection(host, port):
         await writer.wait_closed()
 
 
-async def read_msgs(host: str, port: int, queue: asyncio.Queue[str]) -> NoReturn:
+async def read_msgs(
+    host: str,
+    port: int,
+    messages_queue: asyncio.Queue[str],
+    history_update_queue: asyncio.Queue[str],
+) -> NoReturn:
     """Reads messages from the server.
 
     Args:
         host: server host
         port: server listen port
-        queue: messages queue
+        messages_queue: messages queue
+        history_update_queue: queue for saving message to file
     """
     async with open_connection(host, port) as (reader, writer):
         while True:
             chat_message = await reader.readline()
-            queue.put_nowait(chat_message.decode())
+            decoded_chat_message = chat_message.decode()
+            messages_queue.put_nowait(decoded_chat_message)
+            history_update_queue.put_nowait(decoded_chat_message)
+
+
+async def save_msgs(
+    filepath: str,
+    current_time: str,
+    queue: asyncio.Queue[str],
+) -> NoReturn:
+    """Save chat message to history file.
+
+    Args:
+        filepath: path to history file
+        current_time: current time
+        queue: history update queue
+    """
+    while True:
+        chat_message = await queue.get()
+        async with aiofiles.open(filepath, mode='a') as history_file:
+            await history_file.writelines(f'[{current_time}] {chat_message}')
 
 
 @run_async
@@ -97,10 +135,21 @@ async def main(
     messages_queue: asyncio.Queue[str] = asyncio.Queue()
     sending_queue: asyncio.Queue[str] = asyncio.Queue()
     status_updates_queue: asyncio.Queue[str] = asyncio.Queue()
+    history_updates_queue: asyncio.Queue[str] = asyncio.Queue()
 
     await asyncio.gather(
         gui.draw(messages_queue, sending_queue, status_updates_queue),
-        read_msgs(host=host, port=listen_server_port, queue=messages_queue),
+        read_msgs(
+            host=host,
+            port=listen_server_port,
+            messages_queue=messages_queue,
+            history_update_queue=history_updates_queue,
+        ),
+        save_msgs(
+            filepath=history_file_path,
+            current_time=get_current_time(),
+            queue=history_updates_queue,
+        ),
     )
 
 

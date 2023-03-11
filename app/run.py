@@ -1,18 +1,32 @@
 import asyncio
+from contextlib import asynccontextmanager
+from dataclasses import dataclass
+from dataclasses import field
 import datetime
+from functools import wraps
 import json
 import sys
-from contextlib import asynccontextmanager
-from functools import wraps
 from tkinter import messagebox
 from typing import AsyncGenerator
 
 import aiofiles
-import typer
-from loguru import logger
-
-import gui
 from exceptions import InvalidTokenError
+import gui
+from loguru import logger
+import typer
+
+
+@dataclass
+class Queues:
+    """Project queues."""
+
+    messages: asyncio.Queue[str] = field(default=asyncio.Queue())
+    sending: asyncio.Queue[str] = field(default=asyncio.Queue())
+    status: asyncio.Queue[
+        gui.SendingConnectionStateChanged | gui.ReadConnectionStateChanged | gui.NicknameReceived
+    ] = field(default=asyncio.Queue())
+    history: asyncio.Queue[str] = field(default=asyncio.Queue())
+    watchdog: asyncio.Queue[str] = field(default=asyncio.Queue())
 
 
 def get_current_time() -> str:
@@ -80,29 +94,23 @@ async def open_connection(
 async def read_msgs_from_server(
     host: str,
     port: int,
-    messages_queue: asyncio.Queue[str],
-    history_update_queue: asyncio.Queue[str],
-    status_updates_queue: asyncio.Queue[gui.ReadConnectionStateChanged],
-    watchdog_queue: asyncio.Queue[str],
+    queues: Queues,
 ) -> None:
     """Reads messages from the server.
 
     Args:
         host: server host
         port: server listen port
-        messages_queue: messages queue
-        history_update_queue: queue for saving message to file
-        status_updates_queue: queue for status updates
-        watchdog_queue: queue for
+        queues: queues
     """
     async with open_connection(host, port) as (reader, writer):
         while True:
-            status_updates_queue.put_nowait(gui.ReadConnectionStateChanged.ESTABLISHED)
+            queues.status.put_nowait(gui.ReadConnectionStateChanged.ESTABLISHED)
             chat_message = await reader.readline()
             decoded_chat_message = chat_message.decode()
-            messages_queue.put_nowait(decoded_chat_message)
-            history_update_queue.put_nowait(decoded_chat_message)
-            watchdog_queue.put_nowait('Connection is alive. New message in chat')
+            queues.messages.put_nowait(decoded_chat_message)
+            queues.history.put_nowait(decoded_chat_message)
+            queues.watchdog.put_nowait('Connection is alive. New message in chat')
 
 
 async def read_msgs_from_file(
@@ -165,6 +173,7 @@ async def log_on_to_server(
     reader: asyncio.StreamReader,
     writer: asyncio.StreamWriter,
     token: str,
+    queues: Queues,
 ) -> dict[str, str]:
     """Log on to server.
 
@@ -172,6 +181,7 @@ async def log_on_to_server(
         reader: asyncio.StreamReader
         writer: asyncio.StreamWriter
         token: user token for authorization on the server
+        queues: project queues
 
     Returns:
         object: response from server
@@ -179,43 +189,48 @@ async def log_on_to_server(
     Raises:
         InvalidTokenError: error when using an invalid token
     """
+    queues.status.put_nowait(gui.ReadConnectionStateChanged.INITIATED)
+    queues.status.put_nowait(gui.SendingConnectionStateChanged.INITIATED)
+    queues.watchdog.put_nowait('Connection is alive. Prompt before auth')
     await get_response_from_server(reader)
     await submit_message(writer, f'{token}\n')
     server_response = await get_response_from_server(reader)
     account_info = json.loads(server_response)
     if account_info is None:
         raise InvalidTokenError
+    queues.watchdog.put_nowait('Connection is alive. Authorization done')
     return account_info
 
 
 async def send_msgs(
     host: str,
     port: int,
-    queue: asyncio.Queue[str],
+    queues: Queues,
     token: str,
-    status_updates_queue: asyncio.Queue[gui.SendingConnectionStateChanged],
-    watchdog_queue: asyncio.Queue[str],
 ):
     """Send message to server.
 
     Args:
         host: server host
         port: writing server port
-        queue: queue
         token: user token for authorization on the server
-        status_updates_queue: queue for status updates
-        watchdog_queue: queue for watchdog
+        queues: queues
     """
     async with open_connection(host, port) as (reader, writer):
         await submit_message(writer, f'{token}\n')
         while True:
-            status_updates_queue.put_nowait(gui.SendingConnectionStateChanged.ESTABLISHED)
-            user_msg = await queue.get()
+            queues.status.put_nowait(gui.SendingConnectionStateChanged.ESTABLISHED)
+            user_msg = await queues.sending.get()
             await submit_message(writer, message=f'{sanitize(user_msg)}\n\n')
-            watchdog_queue.put_nowait('Connection is alive. Message sent')
+            queues.watchdog.put_nowait('Connection is alive. Message sent')
 
 
 async def watch_for_connection(queue: asyncio.Queue[str]):
+    """Keeps track of the connection to the server.
+
+    Args:
+        queue: watchdog queue
+    """
     while True:
         log_message = await queue.get()
         logger.info(log_message)
@@ -258,57 +273,39 @@ async def main(
         token: token to access the server
         history_file_path: Path to file with history of minechat
     """
-    messages_queue: asyncio.Queue[str] = asyncio.Queue()
-    sending_queue: asyncio.Queue[str] = asyncio.Queue()
-    status_updates_queue: asyncio.Queue[
-        gui.SendingConnectionStateChanged
-        | gui.ReadConnectionStateChanged
-        | gui.NicknameReceived
-        ] = asyncio.Queue()
-    history_updates_queue: asyncio.Queue[str] = asyncio.Queue()
-    watchdog_queue: asyncio.Queue[str] = asyncio.Queue()
-
-    status_updates_queue.put_nowait(gui.ReadConnectionStateChanged.INITIATED)
-    status_updates_queue.put_nowait(gui.SendingConnectionStateChanged.INITIATED)
-    watchdog_queue.put_nowait('Connection is alive. Prompt before auth')
+    queues = Queues()
 
     try:
         async with open_connection(host, writing_server_port) as (reader, writer):
-            await log_on_to_server(reader, writer, token)
-            watchdog_queue.put_nowait('Connection is alive. Authorization done')
+            await log_on_to_server(reader, writer, token, queues)
     except InvalidTokenError:
         messagebox.showinfo('Неверный токен', 'Проверьте токен, сервер не узнал его')
         sys.exit('Неверный токен')
 
     await read_msgs_from_file(
         filepath=history_file_path,
-        messages_queue=messages_queue,
+        messages_queue=queues.messages,
     )
 
     await asyncio.gather(
-        gui.draw(messages_queue, sending_queue, status_updates_queue),
+        gui.draw(queues.messages, queues.sending, queues.status),
         read_msgs_from_server(
             host=host,
             port=listen_server_port,
-            messages_queue=messages_queue,
-            history_update_queue=history_updates_queue,
-            status_updates_queue=status_updates_queue,
-            watchdog_queue=watchdog_queue,
+            queues=queues,
         ),
         save_msgs(
             filepath=history_file_path,
             current_time=get_current_time(),
-            queue=history_updates_queue,
+            queue=queues.history,
         ),
         send_msgs(
             host=host,
             port=writing_server_port,
-            queue=sending_queue,
             token=token,
-            status_updates_queue=status_updates_queue,
-            watchdog_queue=watchdog_queue,
+            queues=queues,
         ),
-        watch_for_connection(queue=watchdog_queue),
+        watch_for_connection(queue=queues.watchdog),
     )
 
 

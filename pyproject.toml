@@ -13,6 +13,7 @@ typer = "^0.7.0"
 anyio = "^3.6.2"
 aiofiles = "^23.1.0"
 loguru = "^0.6.0"
+async-timeout = "^4.0.2"
 
 
 [tool.poetry.group.dev.dependencies]

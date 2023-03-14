@@ -12,9 +12,9 @@ from chat_client import exceptions
 from chat_client import gui
 from chat_client import history
 from chat_client import listen
+from chat_client import write
 from chat_client.auth import authorise
 from chat_client.queues import Queues
-from chat_client.write import send_msgs
 
 
 def get_current_time() -> str:
@@ -47,6 +47,29 @@ def run_async(func):
         return anyio.run(coro_wrapper)
 
     return wrapper
+
+
+@connection.reconnect
+async def handle_connection(
+    host: str,
+    listen_server_port: int,
+    writing_server_port: int,
+    token: str,
+    queues: Queues,
+):
+    """Controls the network connection.
+
+    Args:
+        host: server host
+        listen_server_port: server listen port
+        writing_server_port: server writing port
+        token: user token
+        queues: app queues
+    """
+    async with anyio.create_task_group() as tg:
+        tg.start_soon(listen.read_msgs, host, listen_server_port, queues)
+        tg.start_soon(write.send_msgs, host, writing_server_port, queues, token)
+        tg.start_soon(connection.watch_for_connection, queues.watchdog)
 
 
 @run_async  # type: ignore
@@ -99,9 +122,18 @@ async def main(
 
     await asyncio.gather(
         gui.draw(queues.messages, queues.sending, queues.status),
-        listen.read_msgs(host=host, port=listen_server_port, queues=queues),
-        send_msgs(host=host, port=writing_server_port, token=token, queues=queues),
-        connection.watch_for_connection(queue=queues.watchdog),
+        history.save_msgs(
+            filepath=history_file_path,
+            current_time=get_current_time(),
+            queue=queues.history,
+        ),
+        handle_connection(
+            host=host,
+            listen_server_port=listen_server_port,
+            writing_server_port=writing_server_port,
+            token=token,
+            queues=queues,
+        ),
     )
 
 

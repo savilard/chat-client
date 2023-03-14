@@ -4,6 +4,7 @@ from functools import wraps
 import sys
 from tkinter import messagebox
 
+import anyio
 import typer
 
 from chat_client import connection
@@ -40,7 +41,10 @@ def run_async(func):
 
     @wraps(func)
     def wrapper(*args, **kwargs):
-        return asyncio.run(func(*args, **kwargs))
+        async def coro_wrapper():
+            return await func(*args, **kwargs)
+
+        return anyio.run(coro_wrapper)
 
     return wrapper
 

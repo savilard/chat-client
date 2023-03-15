@@ -1,6 +1,7 @@
 import asyncio
 from contextlib import asynccontextmanager
 import functools
+import socket
 from typing import AsyncGenerator
 
 import anyio
@@ -68,9 +69,14 @@ def reconnect(func):
             try:
                 return await func(*args, **kwargs)
             except ConnectionError:
+                await anyio.sleep(delay)
+                delay = 3
+            except (socket.gaierror, anyio.ExceptionGroup):
                 queues = kwargs.get('queues')
                 queues.status.put_nowait(gui.ReadConnectionStateChanged.INITIATED)
                 queues.status.put_nowait(gui.SendingConnectionStateChanged.INITIATED)
+                queues.status.put_nowait(gui.NicknameReceived('неизвестно'))
                 await anyio.sleep(delay)
-                delay = 3
+                delay = 10
+
     return wrapped

@@ -5,6 +5,7 @@ import sys
 from tkinter import messagebox
 
 import anyio
+import loguru
 import typer
 
 from chat_client import connection
@@ -12,6 +13,7 @@ from chat_client import exceptions
 from chat_client import gui
 from chat_client import history
 from chat_client import listen
+from chat_client import server
 from chat_client import write
 from chat_client.auth import authorise
 from chat_client.queues import Queues
@@ -49,6 +51,18 @@ def run_async(func):
     return wrapper
 
 
+async def ping_pong(host: str, writing_server_port: int):
+    """Checks for a connection to the server.
+
+    Args:
+        host: server host
+        writing_server_port: server writing port
+    """
+    async with connection.open_connection(host, writing_server_port) as (reader, writer):
+        loguru.logger.info('send empty message')
+        await server.submit_message(writer, '')
+
+
 @connection.reconnect
 async def handle_connection(
     host: str,
@@ -56,6 +70,7 @@ async def handle_connection(
     writing_server_port: int,
     token: str,
     queues: Queues,
+    nickname: str,
 ):
     """Controls the network connection.
 
@@ -65,11 +80,13 @@ async def handle_connection(
         writing_server_port: server writing port
         token: user token
         queues: app queues
+        nickname: user nickname
     """
     async with anyio.create_task_group() as tg:
-        tg.start_soon(listen.read_msgs, host, listen_server_port, queues)
-        tg.start_soon(write.send_msgs, host, writing_server_port, queues, token)
+        tg.start_soon(listen.read_msgs, host, listen_server_port, queues, nickname)
+        tg.start_soon(write.send_msgs, host, writing_server_port, queues, token, nickname)
         tg.start_soon(connection.watch_for_connection, queues.watchdog)
+        tg.start_soon(ping_pong, host, writing_server_port)
 
 
 @run_async  # type: ignore
@@ -113,12 +130,14 @@ async def main(
 
     try:
         async with connection.open_connection(host, writing_server_port) as (reader, writer):
-            await authorise(reader, writer, token, queues)
+            account_info = await authorise(reader, writer, token, queues)
     except exceptions.InvalidTokenError:
         messagebox.showinfo('Неверный токен', 'Проверьте токен, сервер не узнал его')
         sys.exit('Неверный токен')
 
     await history.read_msgs(filepath=history_file_path, messages_queue=queues.messages)
+
+    nickname = account_info['nickname']
 
     await asyncio.gather(
         gui.draw(queues.messages, queues.sending, queues.status),
@@ -133,6 +152,7 @@ async def main(
             writing_server_port=writing_server_port,
             token=token,
             queues=queues,
+            nickname=nickname,
         ),
     )
 

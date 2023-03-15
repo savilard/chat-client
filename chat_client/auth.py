@@ -38,5 +38,7 @@ async def authorise(
     if account_info is None:
         raise exceptions.InvalidTokenError
     queues.watchdog.put_nowait('Connection is alive. Authorization done')
+    queues.status.put_nowait(gui.ReadConnectionStateChanged.ESTABLISHED)
+    queues.status.put_nowait(gui.SendingConnectionStateChanged.ESTABLISHED)
     queues.status.put_nowait(gui.NicknameReceived(account_info['nickname']))
     return account_info

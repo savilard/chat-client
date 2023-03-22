@@ -1,7 +1,8 @@
-import asyncio
 from enum import Enum
 import tkinter as tk
 from tkinter.scrolledtext import ScrolledText
+
+import anyio
 
 from chat_client.exceptions import TkAppClosedError
 
@@ -41,7 +42,7 @@ async def update_tk(root_frame, interval=1 / 120):
             root_frame.update()
         except tk.TclError:
             raise TkAppClosedError()
-        await asyncio.sleep(interval)
+        await anyio.sleep(interval)
 
 
 async def update_conversation_history(panel, messages_queue):
@@ -120,8 +121,7 @@ async def draw(messages_queue, sending_queue, status_updates_queue):
     conversation_panel = ScrolledText(root_frame, wrap='none')
     conversation_panel.pack(side='top', fill='both', expand=True)
 
-    await asyncio.gather(
-        update_tk(root_frame),
-        update_conversation_history(conversation_panel, messages_queue),
-        update_status_panel(status_labels, status_updates_queue),
-    )
+    async with anyio.create_task_group() as tg:
+        tg.start_soon(update_tk, root_frame)
+        tg.start_soon(update_conversation_history, conversation_panel, messages_queue)
+        tg.start_soon(update_status_panel, status_labels, status_updates_queue)

@@ -1,11 +1,9 @@
-import asyncio
 import datetime
 from functools import wraps
 import sys
 from tkinter import messagebox
 
 import anyio
-import loguru
 import typer
 
 from chat_client import connection
@@ -59,7 +57,6 @@ async def ping_pong(host: str, writing_server_port: int):
         writing_server_port: server writing port
     """
     async with connection.open_connection(host, writing_server_port) as (reader, writer):
-        loguru.logger.info('send empty message')
         await server.submit_message(writer, '')
 
 
@@ -139,22 +136,10 @@ async def main(
 
     nickname = account_info['nickname']
 
-    await asyncio.gather(
-        gui.draw(queues.messages, queues.sending, queues.status),
-        history.save_msgs(
-            filepath=history_file_path,
-            current_time=get_current_time(),
-            queue=queues.history,
-        ),
-        handle_connection(
-            host=host,
-            listen_server_port=listen_server_port,
-            writing_server_port=writing_server_port,
-            token=token,
-            queues=queues,
-            nickname=nickname,
-        ),
-    )
+    async with anyio.create_task_group() as tg:
+        tg.start_soon(gui.draw, queues.messages, queues.sending, queues.status)
+        tg.start_soon(history.save_msgs, history_file_path, get_current_time(), queues.history)
+        tg.start_soon(handle_connection, host, listen_server_port, writing_server_port, token, queues, nickname)
 
 
 if __name__ == '__main__':

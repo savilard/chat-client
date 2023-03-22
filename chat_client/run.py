@@ -1,3 +1,4 @@
+import contextlib
 import datetime
 from functools import wraps
 import sys
@@ -136,4 +137,5 @@ async def main(
 
 
 if __name__ == '__main__':
-    typer.run(main)
+    with contextlib.suppress(KeyboardInterrupt, gui.TkAppClosedError):
+        typer.run(main)

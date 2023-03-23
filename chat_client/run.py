@@ -1,8 +1,9 @@
 import contextlib
 import datetime
-import json
 from functools import wraps
+import json
 import os
+import socket
 import sys
 from tkinter import messagebox
 
@@ -62,12 +63,11 @@ async def ping_pong(minechat_server: server.Server):
         await server.submit_message(writer, '')
 
 
-@connection.reconnect
+@connection.reconnect()
 async def handle_connection(
     minechat_server: server.Server,
     token: str,
     queues: Queues,
-    nickname: str,
 ):
     """Controls the network connection.
 
@@ -75,11 +75,10 @@ async def handle_connection(
         minechat_server: minechat server
         token: user token
         queues: app queues
-        nickname: user nickname
     """
     async with anyio.create_task_group() as tg:
-        tg.start_soon(messages.read_msgs, minechat_server, queues, nickname)
-        tg.start_soon(messages.send_msgs, minechat_server, queues, token, nickname)
+        tg.start_soon(messages.read_msgs, minechat_server, queues)
+        tg.start_soon(messages.send_msgs, minechat_server, queues, token)
         tg.start_soon(connection.watch_for_connection, queues.watchdog)
         tg.start_soon(ping_pong, minechat_server)
 
@@ -113,7 +112,7 @@ async def main() -> None:
     async with anyio.create_task_group() as tg:
         tg.start_soon(gui.draw, queues.messages, queues.sending, queues.status)
         tg.start_soon(history.save_msgs, settings.history, get_current_time(), queues.history)
-        tg.start_soon(handle_connection, minechat_server, token, queues, account_info['nickname'])
+        tg.start_soon(handle_connection, minechat_server, token, queues)
 
 
 if __name__ == '__main__':

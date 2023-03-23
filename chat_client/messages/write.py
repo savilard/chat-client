@@ -1,4 +1,3 @@
-from chat_client import gui
 from chat_client.connection import open_connection
 from chat_client.queues import Queues
 from chat_client.server import Server
@@ -23,7 +22,6 @@ async def send_msgs(
     server: Server,
     queues: Queues,
     token: str,
-    nickname: str,
 ):
     """Send message to server.
 
@@ -31,11 +29,8 @@ async def send_msgs(
         server: minechat server
         token: user token for authorization on the server
         queues: queues
-        nickname: user nickname
     """
     async with open_connection(server.host, server.port_in) as (reader, writer):
-        queues.status.put_nowait(gui.SendingConnectionStateChanged.ESTABLISHED)
-        queues.status.put_nowait(gui.NicknameReceived(nickname))
         await submit_message(writer, f'{token}\n')
         while True:
             user_msg = await queues.sending.get()

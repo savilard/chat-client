@@ -2,7 +2,6 @@ import asyncio
 import json
 
 from chat_client import exceptions
-from chat_client import gui
 from chat_client.queues import Queues
 from chat_client.server import get_response_from_server
 from chat_client.server import submit_message
@@ -28,8 +27,6 @@ async def authorise(
     Raises:
         InvalidTokenError: error when using an invalid token
     """
-    queues.status.put_nowait(gui.ReadConnectionStateChanged.INITIATED)
-    queues.status.put_nowait(gui.SendingConnectionStateChanged.INITIATED)
     queues.watchdog.put_nowait('Connection is alive. Prompt before auth')
     await get_response_from_server(reader)
     await submit_message(writer, f'{token}\n')
@@ -38,7 +35,4 @@ async def authorise(
     if account_info is None:
         raise exceptions.InvalidTokenError
     queues.watchdog.put_nowait('Connection is alive. Authorization done')
-    queues.status.put_nowait(gui.ReadConnectionStateChanged.ESTABLISHED)
-    queues.status.put_nowait(gui.SendingConnectionStateChanged.ESTABLISHED)
-    queues.status.put_nowait(gui.NicknameReceived(account_info['nickname']))
     return account_info

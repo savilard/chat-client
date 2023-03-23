@@ -2,13 +2,14 @@ import asyncio
 from contextlib import asynccontextmanager
 import functools
 import socket
+from tkinter import messagebox
 from typing import AsyncGenerator
 
 import anyio
 from async_timeout import timeout
 from loguru import logger
 
-from chat_client import gui
+from chat_client.exceptions import TkAppClosedError
 
 
 @asynccontextmanager
@@ -30,16 +31,16 @@ async def open_connection(
         await writer.wait_closed()
 
 
-async def watch_for_connection(queue: asyncio.Queue[str]):
+async def watch_for_connection(queue: asyncio.Queue[str], timeout_seconds=3):
     """Keeps track of the connection to the server.
 
     Args:
         queue: watchdog queue
+        timeout_seconds: connection timeout in seconds
 
     Raises:
         ConnectionError: connection error raise
     """
-    timeout_seconds = 1
     while True:
         async with timeout(timeout_seconds) as cm:
             try:
@@ -53,30 +54,24 @@ async def watch_for_connection(queue: asyncio.Queue[str]):
                 logger.info(log_message)
 
 
-def reconnect(func):
-    """Manages reconnection to the server.
+def reconnect(delay=1, retries=10, backoff=1.4):
+    """Manages reconnection to the server."""
 
-    Args:
-        func:  Function controlling network connections
+    def wrap(func):
+        @functools.wraps(func)
+        async def wrapped(*args, **kwargs):
+            _delay, _retries = delay, retries
+            while _retries > 0:
+                try:
+                    return await func(*args, **kwargs)
+                except (ConnectionError, anyio.ExceptionGroup, socket.gaierror):
+                    await anyio.sleep(delay)
+                    _retries -= 1
+                    _delay *= backoff
 
-    Returns:
-        object: decorate func
-    """
-    @functools.wraps(func)
-    async def wrapped(*args, **kwargs):
-        delay = 1
-        while True:
-            try:
-                return await func(*args, **kwargs)
-            except ConnectionError:
-                await anyio.sleep(delay)
-                delay = 3
-            except (socket.gaierror, anyio.ExceptionGroup):
-                queues = kwargs.get('queues')
-                queues.status.put_nowait(gui.ReadConnectionStateChanged.INITIATED)
-                queues.status.put_nowait(gui.SendingConnectionStateChanged.INITIATED)
-                queues.status.put_nowait(gui.NicknameReceived('неизвестно'))
-                await anyio.sleep(delay)
-                delay = 10
+            messagebox.showerror("Ошибка", "Отсутствует соединение с сервером")
+            raise TkAppClosedError
 
-    return wrapped
+        return wrapped
+
+    return wrap

@@ -1,7 +1,7 @@
 import contextlib
 import datetime
-from functools import wraps
 import json
+from functools import wraps
 import os
 import sys
 from tkinter import messagebox
@@ -94,9 +94,7 @@ async def main() -> None:
 
     if settings.token is None or os.environ.get('TOKEN', None) is None:
         registration_run_command = (
-            f'python chat_client/register.py'
-            f' --host {minechat_server.host}'
-            f' --outport {minechat_server.port_in}'
+            f'python chat_client/register.py --host {minechat_server.host} --outport {minechat_server.port_in}'
         )
         register = await anyio.run_process(registration_run_command)
         token = register.stdout.decode()

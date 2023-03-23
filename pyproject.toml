@@ -9,11 +9,12 @@ packages = [{include = "chat_client"}]
 
 [tool.poetry.dependencies]
 python = "^3.11"
-typer = "^0.7.0"
 anyio = "^3.6.2"
 aiofiles = "^23.1.0"
 loguru = "^0.6.0"
 async-timeout = "^4.0.2"
+python-dotenv = "^1.0.0"
+configargparse = "^1.5.3"
 
 
 [tool.poetry.group.dev.dependencies]

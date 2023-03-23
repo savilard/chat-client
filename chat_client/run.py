@@ -5,7 +5,7 @@ import sys
 from tkinter import messagebox
 
 import anyio
-import typer
+from dotenv import load_dotenv
 
 from chat_client import connection
 from chat_client import exceptions
@@ -13,6 +13,7 @@ from chat_client import gui
 from chat_client import history
 from chat_client import messages
 from chat_client import server
+from chat_client.args import get_args
 from chat_client.auth import authorise
 from chat_client.queues import Queues
 
@@ -82,60 +83,28 @@ async def handle_connection(
 
 
 @run_async  # type: ignore
-async def main(
-    host: str = typer.Option(
-        default='minechat.dvmn.org',
-        help='Minechat host',
-        envvar='SERVER_HOST',
-    ),
-    port_out: int = typer.Option(
-        default=5000,
-        help='Minechat listen port',
-        envvar='PORT_OUT',
-    ),
-    port_in: int = typer.Option(
-        default=5050,
-        help='Minechat writing port',
-        envvar='PORT_IN',
-    ),
-    token: str = typer.Option(
-        None,
-        help='Your token',
-        envvar='MINECHAT_TOKEN',
-    ),
-    history_file_path: str = typer.Option(
-        default='minechat.history',
-        help='Path to file with history of minechat',
-        envvar='HISTORY_FILE_PATH',
-    ),
-) -> None:
-    """Entry point.
-
-    Args:
-        host: minechat server host
-        port_out: port to receive messages
-        port_in: port for sending messages
-        token: token to access the server
-        history_file_path: Path to file with history of minechat
-    """
+async def main() -> None:
+    """Entry point."""
+    load_dotenv()
     queues = Queues()
-    minechat_server = server.Server(host=host, port_in=port_in, port_out=port_out)
+    settings = get_args()
+    minechat_server = server.Server(host=settings.host, port_in=settings.inport, port_out=settings.outport)
 
     try:
-        async with connection.open_connection(minechat_server.host, minechat_server.port_in) as (reader, writer):
-            account_info = await authorise(reader, writer, token, queues)
+        async with connection.open_connection(minechat_server.host, minechat_server.port_out) as (reader, writer):
+            account_info = await authorise(reader, writer, settings.token, queues)
     except exceptions.InvalidTokenError:
         messagebox.showinfo('Неверный токен', 'Проверьте токен, сервер не узнал его')
         sys.exit('Неверный токен')
 
-    await history.read_msgs(filepath=history_file_path, messages_queue=queues.messages)
+    await history.read_msgs(filepath=settings.history, messages_queue=queues.messages)
 
     async with anyio.create_task_group() as tg:
         tg.start_soon(gui.draw, queues.messages, queues.sending, queues.status)
-        tg.start_soon(history.save_msgs, history_file_path, get_current_time(), queues.history)
-        tg.start_soon(handle_connection, minechat_server, token, queues, account_info['nickname'])
+        tg.start_soon(history.save_msgs, settings.history, get_current_time(), queues.history)
+        tg.start_soon(handle_connection, minechat_server, settings.token, queues, account_info['nickname'])
 
 
 if __name__ == '__main__':
     with contextlib.suppress(KeyboardInterrupt, gui.TkAppClosedError):
-        typer.run(main)
+        main()

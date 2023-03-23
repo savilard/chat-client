@@ -1,6 +1,8 @@
 import contextlib
 import datetime
 from functools import wraps
+import json
+import os
 import sys
 from tkinter import messagebox
 
@@ -90,9 +92,20 @@ async def main() -> None:
     settings = get_args()
     minechat_server = server.Server(host=settings.host, port_in=settings.inport, port_out=settings.outport)
 
+    if settings.token is None or os.environ.get('TOKEN', None) is None:
+        registration_run_command = (
+            f'python chat_client/register.py'
+            f' --host {minechat_server.host}'
+            f' --outport {minechat_server.port_in}'
+        )
+        register = await anyio.run_process(registration_run_command)
+        token = register.stdout.decode()
+    else:
+        token = settings.token
+
     try:
-        async with connection.open_connection(minechat_server.host, minechat_server.port_out) as (reader, writer):
-            account_info = await authorise(reader, writer, settings.token, queues)
+        async with connection.open_connection(minechat_server.host, minechat_server.port_in) as (reader, writer):
+            account_info = await authorise(reader, writer, token, queues)
     except exceptions.InvalidTokenError:
         messagebox.showinfo('Неверный токен', 'Проверьте токен, сервер не узнал его')
         sys.exit('Неверный токен')
@@ -102,9 +115,9 @@ async def main() -> None:
     async with anyio.create_task_group() as tg:
         tg.start_soon(gui.draw, queues.messages, queues.sending, queues.status)
         tg.start_soon(history.save_msgs, settings.history, get_current_time(), queues.history)
-        tg.start_soon(handle_connection, minechat_server, settings.token, queues, account_info['nickname'])
+        tg.start_soon(handle_connection, minechat_server, token, queues, account_info['nickname'])
 
 
 if __name__ == '__main__':
-    with contextlib.suppress(KeyboardInterrupt, gui.TkAppClosedError):
+    with contextlib.suppress(KeyboardInterrupt, gui.TkAppClosedError, json.decoder.JSONDecodeError):
         main()

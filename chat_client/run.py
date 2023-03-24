@@ -1,9 +1,9 @@
+import asyncio
 import contextlib
 import datetime
 from functools import wraps
 import json
 import os
-import socket
 import sys
 from tkinter import messagebox
 
@@ -53,14 +53,18 @@ def run_async(func):
     return wrapper
 
 
-async def ping_pong(minechat_server: server.Server):
+async def ping_pong(reader: asyncio.StreamReader, writer: asyncio.StreamWriter, delay=60):
     """Checks for a connection to the server.
 
     Args:
-        minechat_server: minechat server
+        reader: asyncio.StreamReader
+        writer: asyncio.StreamWriter
+        delay:
     """
-    async with connection.open_connection(minechat_server.host, minechat_server.port_in) as (reader, writer):
+    while True:
         await server.submit_message(writer, '')
+        await reader.readuntil()
+        await anyio.sleep(delay=delay)
 
 
 @connection.reconnect()
@@ -76,11 +80,27 @@ async def handle_connection(
         token: user token
         queues: app queues
     """
-    async with anyio.create_task_group() as tg:
-        tg.start_soon(messages.read_msgs, minechat_server, queues)
-        tg.start_soon(messages.send_msgs, minechat_server, queues, token)
-        tg.start_soon(connection.watch_for_connection, queues.watchdog)
-        tg.start_soon(ping_pong, minechat_server)
+    queues.status.put_nowait(gui.ReadConnectionStateChanged.INITIATED)
+    queues.status.put_nowait(gui.SendingConnectionStateChanged.INITIATED)
+    queues.status.put_nowait(gui.NicknameReceived('неизвестно'))
+    async with (
+        connection.open_connection(minechat_server.host, minechat_server.port_in) as (send_reader, send_writer),
+        connection.open_connection(minechat_server.host, minechat_server.port_out) as (read_reader, read_writer),
+    ):
+        queues.status.put_nowait(gui.ReadConnectionStateChanged.ESTABLISHED)
+        queues.status.put_nowait(gui.SendingConnectionStateChanged.ESTABLISHED)
+
+        try:
+            await authorise(send_reader, send_writer, token, queues)
+        except exceptions.InvalidTokenError:
+            messagebox.showinfo('Неверный токен', 'Проверьте токен, сервер не узнал его')
+            sys.exit('Неверный токен')
+
+        async with anyio.create_task_group() as tg:
+            tg.start_soon(messages.read_msgs, read_reader, queues)
+            tg.start_soon(messages.send_msgs, send_writer, queues, token)
+            tg.start_soon(connection.watch_for_connection, queues.watchdog)
+            tg.start_soon(ping_pong, send_reader, send_writer)
 
 
 @run_async  # type: ignore
@@ -100,16 +120,8 @@ async def main() -> None:
     else:
         token = settings.token
 
-    try:
-        async with connection.open_connection(minechat_server.host, minechat_server.port_in) as (reader, writer):
-            account_info = await authorise(reader, writer, token, queues)
-    except exceptions.InvalidTokenError:
-        messagebox.showinfo('Неверный токен', 'Проверьте токен, сервер не узнал его')
-        sys.exit('Неверный токен')
-
-    await history.read_msgs(filepath=settings.history, messages_queue=queues.messages)
-
     async with anyio.create_task_group() as tg:
+        tg.start_soon(history.read_msgs, settings.history, queues.messages)
         tg.start_soon(gui.draw, queues.messages, queues.sending, queues.status)
         tg.start_soon(history.save_msgs, settings.history, get_current_time(), queues.history)
         tg.start_soon(handle_connection, minechat_server, token, queues)

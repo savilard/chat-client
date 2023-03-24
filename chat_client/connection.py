@@ -48,13 +48,13 @@ async def watch_for_connection(queue: asyncio.Queue[str], timeout_seconds=3):
             except (asyncio.TimeoutError, asyncio.CancelledError) as err:
                 if not cm.expired:
                     raise err
-                logger.warning(f'{timeout_seconds}s timeout is elapsed')
+                logger.warning('Тайм-аут истек')
                 raise ConnectionError
             else:
                 logger.info(log_message)
 
 
-def reconnect(delay=1, retries=10, backoff=1.4):
+def reconnect(delay=1, retries=30, backoff=1.4):
     """Manages reconnection to the server."""
 
     def wrap(func):
@@ -69,7 +69,7 @@ def reconnect(delay=1, retries=10, backoff=1.4):
                     _retries -= 1
                     _delay *= backoff
 
-            messagebox.showerror("Ошибка", "Отсутствует соединение с сервером")
+            messagebox.showerror('Ошибка', 'Отсутствует соединение с сервером')
             raise TkAppClosedError
 
         return wrapped

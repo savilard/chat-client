@@ -1,6 +1,6 @@
-from chat_client.connection import open_connection
+import asyncio
+
 from chat_client.queues import Queues
-from chat_client.server import Server
 from chat_client.server import submit_message
 
 
@@ -19,20 +19,19 @@ def sanitize(text: str) -> str:
 
 
 async def send_msgs(
-    server: Server,
+    writer: asyncio.StreamWriter,
     queues: Queues,
     token: str,
 ):
     """Send message to server.
 
     Args:
-        server: minechat server
+        writer: asyncio.StreamWriter
         token: user token for authorization on the server
         queues: queues
     """
-    async with open_connection(server.host, server.port_in) as (reader, writer):
-        await submit_message(writer, f'{token}\n')
-        while True:
-            user_msg = await queues.sending.get()
-            await submit_message(writer, message=f'{sanitize(user_msg)}\n\n')
-            queues.watchdog.put_nowait('Connection is alive. Message sent')
+    await submit_message(writer, f'{token}\n')
+    while True:
+        user_msg = await queues.sending.get()
+        await submit_message(writer, message=f'{sanitize(user_msg)}\n\n')
+        queues.watchdog.put_nowait('Сообщение отправлено')

@@ -59,7 +59,7 @@ async def ping_pong(reader: asyncio.StreamReader, writer: asyncio.StreamWriter, 
     Args:
         reader: asyncio.StreamReader
         writer: asyncio.StreamWriter
-        delay:
+        delay: ping_pong delay
     """
     while True:
         await server.submit_message(writer, '')

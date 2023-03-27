@@ -111,7 +111,7 @@ async def main() -> None:
     settings = get_args()
     minechat_server = server.Server(host=settings.host, port_in=settings.inport, port_out=settings.outport)
 
-    if settings.token is None or os.environ.get('TOKEN', None) is None:
+    if settings.token is None:
         registration_run_command = (
             f'python chat_client/register.py --host {minechat_server.host} --outport {minechat_server.port_in}'
         )

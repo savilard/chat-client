@@ -34,7 +34,7 @@ def register(app_settings, nickname=None) -> tuple[str, str] | None:
             response = conn.readline()
 
     creds = json.loads(response)
-    with open('chat_client/.env', 'w') as fh:
+    with open('.env', 'w') as fh:
         fh.write(f'TOKEN={creds["account_hash"]}')
 
     messagebox.showinfo(

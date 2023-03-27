@@ -21,16 +21,13 @@ def sanitize(text: str) -> str:
 async def send_msgs(
     writer: asyncio.StreamWriter,
     queues: Queues,
-    token: str,
 ):
     """Send message to server.
 
     Args:
         writer: asyncio.StreamWriter
-        token: user token for authorization on the server
         queues: queues
     """
-    await submit_message(writer, f'{token}\n')
     while True:
         user_msg = await queues.sending.get()
         await submit_message(writer, message=f'{sanitize(user_msg)}\n\n')

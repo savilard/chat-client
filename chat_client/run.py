@@ -3,7 +3,6 @@ import contextlib
 import datetime
 from functools import wraps
 import json
-import os
 import sys
 from tkinter import messagebox
 

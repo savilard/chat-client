@@ -1,4 +1,4 @@
-<h3 align="center">Anonymous chat client</h3>
+<h1 align="center">Anonymous chat client</h1>
 
 <p align="center">
   <img alt="Platform" src="https://img.shields.io/badge/platform-linux-green?style=for-the-badge" />
